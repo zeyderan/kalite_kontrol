@@ -1,0 +1,279 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  QUALITY_MANAGER
+  PRODUCTION_MANAGER
+  WAREHOUSE_MANAGER
+  PURCHASING
+  STAFF
+}
+
+enum DepartmentCode {
+  MANAGEMENT
+  QUALITY
+  PRODUCTION
+  WAREHOUSE
+  PURCHASING
+}
+
+enum DocumentType {
+  POLICY
+  MANUAL
+  PROCEDURE
+  INSTRUCTION
+  PLAN
+  FORM
+  LIST
+  APPOINTMENT
+  SPECIFICATION
+  ANALYSIS
+  DECLARATION
+}
+
+enum DocumentStatus {
+  DRAFT
+  ACTIVE
+  OBSOLETE
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum TrainingStatus {
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum NonconformityStatus {
+  OPEN
+  UNDER_REVIEW
+  ACTION_IN_PROGRESS
+  CLOSED
+}
+
+enum TraceabilityStatus {
+  OPEN
+  VERIFIED
+  RECALLED
+  CLOSED
+}
+
+model Facility {
+  id        String               @id @default(cuid())
+  name      String
+  code      String               @unique
+  isActive  Boolean              @default(true)
+  users     User[]
+  documents Document[]
+  suppliers Supplier[]
+  products  Product[]
+  trainings TrainingPlan[]
+  issues    Nonconformity[]
+  batches   TraceabilityRecord[]
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+}
+
+model Department {
+  id        String          @id @default(cuid())
+  name      String
+  code      DepartmentCode  @unique
+  users     User[]
+  documents Document[]
+  trainings TrainingPlan[]
+  issues    Nonconformity[]
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+}
+
+model User {
+  id            String           @id @default(cuid())
+  name          String?
+  email         String           @unique
+  password      String
+  role          UserRole         @default(STAFF)
+  emailVerified DateTime?
+  image         String?
+  facilityId    String?
+  departmentId  String?
+  accounts      Account[]
+  sessions      Session[]
+  facility      Facility?        @relation(fields: [facilityId], references: [id])
+  department    Department?      @relation(fields: [departmentId], references: [id])
+  revisions     DocumentRevision[]
+  trainings     TrainingPlan[]
+  logs          AuditLog[]
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+}
+
+model Account {
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([provider, providerAccountId])
+}
+
+model Session {
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([sessionToken])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Document {
+  id                String             @id @default(cuid())
+  code              String             @unique
+  title             String
+  type              DocumentType
+  status            DocumentStatus     @default(DRAFT)
+  currentRevision   String?
+  ownerDepartmentId String?
+  facilityId        String?
+  ownerDepartment   Department?        @relation(fields: [ownerDepartmentId], references: [id])
+  facility          Facility?          @relation(fields: [facilityId], references: [id])
+  revisions         DocumentRevision[]
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+}
+
+model DocumentRevision {
+  id            String   @id @default(cuid())
+  documentId    String
+  revisionNo    String
+  revisionDate  DateTime?
+  effectiveDate DateTime?
+  filePath      String?
+  notes         String?
+  createdById   String?
+  document      Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  createdBy     User?    @relation(fields: [createdById], references: [id])
+  createdAt     DateTime @default(now())
+
+  @@unique([documentId, revisionNo])
+}
+
+model Supplier {
+  id         String    @id @default(cuid())
+  name       String
+  code       String    @unique
+  email      String?
+  phone      String?
+  riskLevel  RiskLevel @default(MEDIUM)
+  isApproved Boolean   @default(false)
+  facilityId String?
+  facility   Facility? @relation(fields: [facilityId], references: [id])
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+}
+
+model Product {
+  id          String               @id @default(cuid())
+  name        String
+  code        String               @unique
+  category    String
+  description String?
+  facilityId  String?
+  facility    Facility?            @relation(fields: [facilityId], references: [id])
+  issues      Nonconformity[]
+  batches     TraceabilityRecord[]
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+}
+
+model TrainingPlan {
+  id            String         @id @default(cuid())
+  title         String
+  plannedDate   DateTime
+  status        TrainingStatus @default(PLANNED)
+  departmentId  String?
+  facilityId    String?
+  responsibleId String?
+  department    Department?    @relation(fields: [departmentId], references: [id])
+  facility      Facility?      @relation(fields: [facilityId], references: [id])
+  responsible   User?          @relation(fields: [responsibleId], references: [id])
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+}
+
+model Nonconformity {
+  id           String              @id @default(cuid())
+  referenceNo  String              @unique
+  source       String
+  description  String
+  status       NonconformityStatus @default(OPEN)
+  detectedAt   DateTime
+  facilityId   String?
+  departmentId String?
+  productId    String?
+  facility     Facility?           @relation(fields: [facilityId], references: [id])
+  department   Department?         @relation(fields: [departmentId], references: [id])
+  product      Product?            @relation(fields: [productId], references: [id])
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+}
+
+model TraceabilityRecord {
+  id         String             @id @default(cuid())
+  batchNo    String             @unique
+  quantity   Float
+  producedAt DateTime
+  status     TraceabilityStatus @default(OPEN)
+  productId  String?
+  facilityId String?
+  product    Product?           @relation(fields: [productId], references: [id])
+  facility   Facility?          @relation(fields: [facilityId], references: [id])
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+}
+
+model AuditLog {
+  id            String   @id @default(cuid())
+  entityType    String
+  entityId      String
+  action        String
+  details       String?
+  performedById String?
+  performedBy   User?    @relation(fields: [performedById], references: [id])
+  createdAt     DateTime @default(now())
+
+  @@index([entityType, entityId])
+}
